@@ -24,7 +24,7 @@ environment is the whole contract between them.
     ├── app.log         throwaway  the app's stdout+stderr, captured by saatchi
     └── shots/          throwaway  one png per shot() call
 
-    ready  = the app's port answers 200
+    ready  = the app's port answers 200 (30s, extended while the app lives)
     fresh  = git clean -fx .saatchi/
     video  = `export const record = true` in the section (mp4 instead of stills)
 
@@ -131,7 +131,26 @@ Sections are throwaway: never committed; pasted into the PR body (a
               type = "app";
               program = nixpkgs.lib.getExe (pkgs.writeShellApplication {
                 name = "saatchi";
-                runtimeInputs = [ pkgs.bun pkgs.just pkgs.playwright-driver.browsers pkgs.ffmpeg ];
+                runtimeInputs = [
+                  pkgs.bash
+                  pkgs.coreutils
+                  pkgs.bun
+                  pkgs.just
+                  pkgs.ffmpeg
+                  pkgs.playwright-driver.browsers
+                ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.procps ];
+                runtimeEnv = {
+                  PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+                  PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "1";
+                  # flake source: git-tracked files only (untracked lib/*.ts is invisible
+                  # until `git add`; ${./.} is the same filter inside a flake)
+                  SAATCHI_ROOT = "${self}";
+                  PLAYWRIGHT_CORE = "${pkgs.playwright-driver}";
+                } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+                  FONTCONFIG_FILE = pkgs.makeFontsConf {
+                    fontDirectories = [ pkgs.dejavu_fonts pkgs.liberation_ttf ];
+                  };
+                };
                 text = ''
                   export PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers}
                   exec bash ${./saatchi.sh} "$@"

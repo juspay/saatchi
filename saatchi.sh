@@ -2,6 +2,11 @@
 # composition + teardown trap. no flags, no arguments, ever.
 set -euo pipefail
 
+if [[ $# -ne 0 ]]; then
+  printf '%s\n' "saatchi: no flags, no arguments, ever"
+  exit 1
+fi
+
 SAATCHI_ROOT="${SAATCHI_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 cwd="$PWD"
 dot="$cwd/.saatchi"
@@ -20,7 +25,9 @@ kill_tree() {
 }
 
 teardown() {
-  trap - EXIT INT TERM
+  # ignore further signals: a second ^C in the grace window must not
+  # abort before KILL, and HUP/QUIT must not skip us
+  trap '' EXIT INT TERM HUP QUIT
   if [[ -n "${app_pid}" ]]; then
     kill_tree "${app_pid}" TERM
     for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -34,7 +41,7 @@ teardown() {
     rm -rf "${run_dir}"
   fi
 }
-trap teardown EXIT INT TERM
+trap teardown EXIT INT TERM HUP QUIT
 
 indent() {
   while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -108,7 +115,7 @@ cp "${SAATCHI_ROOT}/lib/"*.ts "${run_dir}/"
 : > "${dot}/app.log"
 set -m
 PORT="${PORT}" HOME="${HOME_DIR}" DATA="${DATA}" \
-  just -f "${dot}/mod.just" serve >>"${dot}/app.log" 2>&1 &
+  just -f "${dot}/mod.just" serve >>"${dot}/app.log" 2>&1 </dev/null &
 app_pid=$!
 set +m
 export SAATCHI_APP_PID="${app_pid}"

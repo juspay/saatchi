@@ -2,10 +2,15 @@ import type { Browser, BrowserContext, Page } from "playwright-core"
 
 // Section opt-in is `export const record = true` on evidence.ts (mp4, not stills).
 
+export type Captured = {
+  page: Page
+  finalize: () => Promise<void>
+}
+
 export async function openCaptured(
   browser: Browser,
   opts: { record: boolean; shotsDir: string },
-): Promise<{ page: Page; finalize: () => Promise<void> }> {
+): Promise<Captured> {
   const context: BrowserContext = await browser.newContext(
     opts.record
       ? { recordVideo: { dir: opts.shotsDir, size: { width: 1280, height: 720 } } }
@@ -37,13 +42,15 @@ export async function openCaptured(
         ],
         { stdout: "ignore", stderr: "pipe" },
       )
+      const errText = proc.stderr ? await new Response(proc.stderr).text() : ""
       const code = await proc.exited
-      if (code === 0) {
-        try {
-          await Bun.file(webm).unlink()
-        } catch {
-          // leave the webm if unlink fails
-        }
+      if (code !== 0) {
+        throw new Error(errText.trim() || `ffmpeg exited ${code}`)
+      }
+      try {
+        await Bun.file(webm).unlink()
+      } catch {
+        // leave the webm if unlink fails
       }
     },
   }

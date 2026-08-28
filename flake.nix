@@ -22,6 +22,8 @@
             runtimeEnv = {
               PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
               PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "1";
+              # flake source: git-tracked files only (untracked lib/*.ts is invisible
+              # until `git add`; ${./.} is the same filter inside a flake)
               SAATCHI_ROOT = "${self}";
               PLAYWRIGHT_CORE = "${pkgs.playwright-driver}";
             } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
