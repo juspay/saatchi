@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { MIME, ext, httpStory, isVideo, isWebm, markdown, mimeFor, stem } from "./upload.ts"
+import { MIME, ext, field, httpStory, isVideo, isWebm, markdown, mimeFor, stem } from "./upload.ts"
 
 describe("the mime table", () => {
   test("shots speak their types", () => {
@@ -86,6 +86,16 @@ describe("http stories", () => {
   test("anything else keeps the body's first words", () => {
     expect(httpStory(500, '{"message":"boom"}')).toBe('HTTP 500 — {"message":"boom"}')
     expect(httpStory(500, "")).toBe("HTTP 500")
+  })
+})
+
+describe("json field", () => {
+  test("the field, or null", () => {
+    expect(field('{"id":1349937941}', "id")).toBe("1349937941")
+    expect(field('{"url":"https://u/1"}', "url")).toBe("https://u/1")
+    expect(field('{"other":1}', "url")).toBeNull()
+    expect(field("not json", "url")).toBeNull()
+    expect(field("{}", "id")).toBeNull()
   })
 })
 

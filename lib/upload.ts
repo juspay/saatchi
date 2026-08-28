@@ -40,6 +40,16 @@ export function stem(name: string): string {
 
 export type Landed = { file: string; url: string }
 
+/** {"id":42} → "42" — the field, or null when it isn't there or isn't json. */
+export function field(json: string, key: string): string | null {
+  try {
+    const v = (JSON.parse(json) as Record<string, unknown>)[key]
+    return v == null ? null : String(v)
+  } catch {
+    return null
+  }
+}
+
 /**
  * The ONE markdown block on stdout, ready to paste into a PR body:
  * images embed; a video is a bare URL on its own line

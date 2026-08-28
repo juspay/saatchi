@@ -2,7 +2,7 @@
 // stdout is the markdown block and NOTHING else; saatchi talks on stderr.
 import { readdir, stat, unlink } from "node:fs/promises"
 import { join } from "node:path"
-import { MIME, httpStory, isWebm, markdown, mimeFor, type Landed } from "./upload.ts"
+import { MIME, field, httpStory, isWebm, markdown, mimeFor, type Landed } from "./upload.ts"
 
 const say = (line: string) => console.error(`saatchi: ${line}`)
 const fail = (line: string) => console.error(`saatchi: FAIL ${line}`)
@@ -84,13 +84,8 @@ async function main(): Promise<number> {
     fail(`— gh could not see a repository from this worktree ↓\n${indent(repo.err)}`)
     return 1
   }
-  let repoId = ""
-  try {
-    repoId = String(JSON.parse(repo.out).id)
-  } catch {
-    repoId = ""
-  }
-  if (!repoId || repoId === "undefined") {
+  const repoId = field(repo.out, "id")
+  if (!repoId) {
     fail(`— gh api repos/{owner}/{repo}: no .id in the response`)
     return 1
   }
@@ -136,20 +131,15 @@ async function main(): Promise<number> {
       continue
     }
     if (code >= 200 && code < 300) {
-      let url = ""
-      try {
-        url = String(JSON.parse(body).url ?? "")
-      } catch {
-        url = ""
-      }
-      if (url) {
-        landed.push({ file, url })
-        const n = await stat(path).then((s) => s.size).catch(() => 0)
-        say(`up   → ${file} (${sizeOf(n)}, ${((Date.now() - t1) / 1000).toFixed(1)}s)`)
+      const url = field(body, "url")
+      if (!url) {
+        fail(`→ ${file}: HTTP ${code} but no .url in the response ↓\n${indent(body.slice(0, 400))}`)
+        lost.push({ file, why: `HTTP ${code}, no .url` })
         continue
       }
-      fail(`→ ${file}: HTTP ${code} but no .url in the response ↓\n${indent(body.slice(0, 400))}`)
-      lost.push({ file, why: `HTTP ${code}, no .url` })
+      landed.push({ file, url })
+      const n = await stat(path).then((s) => s.size).catch(() => 0)
+      say(`up   → ${file} (${sizeOf(n)}, ${((Date.now() - t1) / 1000).toFixed(1)}s)`)
       continue
     }
     fail(`→ ${file}: ${httpStory(code, body)}`)
