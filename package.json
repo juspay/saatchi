@@ -1,0 +1,12 @@
+{
+  "name": "saatchi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/drive.ts",
+      "import": "./lib/drive.ts"
+    }
+  }
+}
