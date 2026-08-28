@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { MIME, ext, field, httpStory, isVideo, isWebm, markdown, mimeFor, sizeOf, stem } from "./upload.ts"
+import { MIME, ext, field, httpStory, isWebm, markdown, mimeFor, sizeOf, stem } from "./upload.ts"
 
 describe("the mime table", () => {
   test("shots speak their types", () => {
@@ -19,12 +19,6 @@ describe("the mime table", () => {
     expect(mimeFor(".dotfile")).toBeNull()
   })
 
-  test("video detection rides the table", () => {
-    expect(isVideo("record.mp4")).toBe(true)
-    expect(isVideo("clip.mov")).toBe(true)
-    expect(isVideo("before.png")).toBe(false)
-    expect(isVideo("cursed.svg")).toBe(false)
-  })
 })
 
 describe("webm detection", () => {

@@ -28,10 +28,6 @@ export function isWebm(name: string): boolean {
   return ext(name) === "webm"
 }
 
-export function isVideo(name: string): boolean {
-  return (mimeFor(name) ?? "").startsWith("video/")
-}
-
 /** before-dismiss.png → before-dismiss (the markdown alt text). */
 export function stem(name: string): string {
   const e = ext(name)
