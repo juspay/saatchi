@@ -28,6 +28,18 @@ export function isWebm(name: string): boolean {
   return ext(name) === "webm"
 }
 
+/**
+ * Every name in `files` the transcode target could clobber: exact, and
+ * case-folded — a case-insensitive filesystem hands `ffmpeg -y clip.mp4`
+ * the inode of `Clip.mp4` while reporting both as distinct to readdir.
+ * (Refusing case-folded pairs on a case-sensitive fs is deliberate:
+ * uniform behavior, and a case-only twin in one directory confuses humans.)
+ */
+export function siblingsOf(files: ReadonlySet<string>, target: string): string[] {
+  const folded = target.toLowerCase()
+  return [...files].filter((f) => f.toLowerCase() === folded)
+}
+
 /** before-dismiss.png → before-dismiss (the markdown alt text). */
 export function stem(name: string): string {
   const e = ext(name)

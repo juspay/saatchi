@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { MIME, ext, field, httpStory, isWebm, markdown, mimeFor, sizeOf, stem } from "./upload.ts"
+import { MIME, ext, field, httpStory, isWebm, markdown, mimeFor, siblingsOf, sizeOf, stem } from "./upload.ts"
 
 describe("the mime table", () => {
   test("shots speak their types", () => {
@@ -19,6 +19,29 @@ describe("the mime table", () => {
     expect(mimeFor(".dotfile")).toBeNull()
   })
 
+})
+
+describe("siblingsOf — what the transcode target could clobber", () => {
+  test("the exact name answers to itself", () => {
+    expect(siblingsOf(new Set(["clip.mp4"]), "clip.mp4")).toEqual(["clip.mp4"])
+  })
+
+  test("APFS lies about case: the clobberable file answers to its own spelling", () => {
+    expect(siblingsOf(new Set(["Clip.mp4"]), "clip.mp4")).toEqual(["Clip.mp4"])
+    expect(siblingsOf(new Set(["CLIP.MP4"]), "clip.mp4")).toEqual(["CLIP.MP4"])
+  })
+
+  test("every case-folded twin is named, never half-withheld", () => {
+    expect(siblingsOf(new Set(["Clip.mp4", "clip.MP4", "other.png"]), "clip.mp4").sort()).toEqual([
+      "Clip.mp4",
+      "clip.MP4",
+    ])
+  })
+
+  test("no sibling → empty", () => {
+    expect(siblingsOf(new Set(["other.png", "clip.webm"]), "clip.mp4")).toEqual([])
+    expect(siblingsOf(new Set(), "clip.mp4")).toEqual([])
+  })
 })
 
 describe("webm detection", () => {

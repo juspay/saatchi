@@ -23,7 +23,8 @@ Zero to shots on a PR, six moves:
    foreground. The env is the whole contract: `PORT` to bind (saatchi polls
    it for a 200), `HOME` (already `.saatchi/home/`), `DATA` (`fixtures/`, or
    a `data/` you seeded). The recipe runs in saatchi's bare env, not your
-   toolchain — re-enter it (`exec nix develop --command …`) or you get exit 127.
+   toolchain — re-enter it (`exec nix develop --command …`) — or the recipe
+   dies with a 127 in app.log and saatchi exits 2 (see below).
 3. Drop default data into `.saatchi/fixtures/` (tracked); a throwaway
    `.saatchi/data/` (untracked) shadows it for one-offs.
 4. Write the section: `.saatchi/evidence.ts` default-exports one async
@@ -157,14 +158,17 @@ it) and the token (`gh auth token`, handed to curl on stdin, never in
 argv) BEFORE touching anything: until both pass, .saatchi/shots/ is
 unmutated.
 
-Then any .webm transcodes to mp4 (ffmpeg, `+faststart`; on failure you
-get ffmpeg's own words). Two laws hold here: a failed transcode's
-partial mp4 is deleted — a re-run can never upload a shard of a dead run
-— and an existing X.mp4 is never overwritten: publish refuses BOTH it
-and the X.webm beside it, and asks you to delete the wrong one. After
-that, one POST per shot to the repo's user-attachments endpoint, curl
-`--max-time 120`, so a stalled upload dies loud and named instead of
-ever.
+Then any .webm transcodes to mp4 (ffmpeg, `+faststart`; on failure OR an
+empty success you get ffmpeg's own words). Two laws hold here: a failed
+transcode's partial mp4 is deleted — a re-run can never upload a shard
+of a dead run — and an existing X.mp4, in ANY case spelling, is never
+overwritten: publish refuses the whole set and tells you which file
+resolves it: debris of a killed/failed transcode — delete the mp4 (the
+webm is the real recording; deleting IT ships the corpse); two shots on
+one stem — rename one. After that, one POST per shot to the repo's
+user-attachments endpoint — stall-detected, not wall-clocked: 10 s to
+connect, under 10 kB/s for 20 s — each dies loud and named, with curl
+`--max-time 120` as the outer bound on a genuinely slow upload.
 
 stdout is exactly ONE markdown block:
 
@@ -199,7 +203,9 @@ signal to the wrapper kills the whole tree.
 ## saatchi in the wild
 
 - [juspay/olai's `.saatchi/`](https://github.com/juspay/olai/tree/master/.saatchi)
-  — the living consumer; its `mod.just` (`nix develop` → `olai web`) is a worked adapter.
+  — the living consumer; its `mod.just` is a worked adapter: re-enter the
+  toolchain (`nix develop`), `just build-client`, `bun packages/server/src/main.ts web`,
+  DATA copied out of fixtures first so a writing section mutates only throwaway state.
 - [olai#419 — the comment "Evidence, republished via saatchi#publish"](https://github.com/juspay/olai/pull/419#issuecomment-5457471140)
   — shots re-uploaded through #publish, the markdown block pasted as it came out.
 - [olai#421](https://github.com/juspay/olai/pull/421) — the Padi readout: its PR body's evidence block, shot by saatchi.

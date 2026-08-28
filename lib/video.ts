@@ -53,7 +53,11 @@ export async function openCaptured(
         } catch {
           // nothing landed to delete
         }
-        throw new Error(code !== 0 ? errText.trim() || `ffmpeg exited ${code}` : "ffmpeg exited 0 but record.mp4 is 0 B")
+        // ffmpeg's own words ride on BOTH branches: the 0 B case is precisely
+        // where its stderr is the only diagnostic there is
+        const why = code !== 0 ? `ffmpeg exited ${code}` : "ffmpeg exited 0 but record.mp4 is 0 B"
+        const words = errText.trim()
+        throw new Error(words ? `${why}:\n${words}` : why)
       }
       try {
         await Bun.file(webm).unlink()

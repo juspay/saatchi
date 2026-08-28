@@ -2,7 +2,7 @@
 // stdout is the markdown block and NOTHING else; saatchi talks on stderr.
 import { readdir, stat, unlink } from "node:fs/promises"
 import { join } from "node:path"
-import { MIME, field, httpStory, isWebm, markdown, mimeFor, sizeOf, type Landed } from "./upload.ts"
+import { MIME, field, httpStory, isWebm, markdown, mimeFor, siblingsOf, sizeOf, type Landed } from "./upload.ts"
 
 const say = (line: string) => console.error(`saatchi: ${line}`)
 const fail = (line: string) => console.error(`saatchi: FAIL ${line}`)
@@ -75,8 +75,9 @@ async function main(): Promise<number> {
   // — webm → mp4, in place; ffmpeg's own words on failure (v1's video lesson) —
   // two laws make a failed transcode un-uploadable:
   //   its partial mp4 is deleted, so a re-run can't find a corpse and ship it;
-  //   a pre-existing sibling X.mp4 is never clobbered — the ambiguous PAIR
-  //   (X.webm + X.mp4) is refused, both withheld, the human disambiguates.
+  //   a pre-existing sibling X.mp4 — by ANY case spelling — is never clobbered:
+  //   the ambiguous PAIR is refused, both withheld, and the copy says which
+  //   file resolves which case (debris: the mp4; two shots: rename one).
   const lost: { file: string; why: string }[] = []
   const files = new Set<string>()
   const webms: string[] = []
@@ -87,14 +88,23 @@ async function main(): Promise<number> {
   for (const name of webms) {
     const mp4 = name.replace(/\.webm$/i, ".mp4")
     const mp4Path = join(shotsDir, mp4)
-    // exists() is the whole check: every member of `files` is on disk, and so
-    // is any mp4 an EARLIER refusal spared — a later same-stem webm may never
-    // -y over what the first refusal protected
-    if (await Bun.file(mp4Path).exists()) {
-      fail(`→ ${name}: ${mp4} sits beside it — dead transcode debris or two shots on one stem; refusing BOTH. Delete the wrong one and re-run`)
-      files.delete(mp4)
-      lost.push({ file: name, why: `${mp4} exists beside it` })
-      lost.push({ file: mp4, why: `withheld — ${name} sits beside it` })
+    // resolve the target against the scan's own strings: an insensitive fs
+    // presents clip.mp4 and Clip.mp4 as distinct names for one clobberable
+    // inode — the refusal must withhold by THAT name, or it reports while
+    // shipping; exists() stays the net for what the scan couldn't name
+    const siblings = siblingsOf(files, mp4)
+    if (siblings.length > 0 || (await Bun.file(mp4Path).exists())) {
+      const victims = siblings.length > 0 ? siblings : [mp4]
+      fail(
+        `→ ${name}: ${victims.join(" + ")} beside it — refusing the set:\n` +
+          `  debris of a killed/failed transcode? delete the mp4 — the webm is the real recording; deleting IT ships the corpse.\n` +
+          `  two shots on one stem? rename one. Then re-run.`,
+      )
+      lost.push({ file: name, why: `${victims.join(" + ")} beside it` })
+      for (const victim of victims) {
+        files.delete(victim)
+        lost.push({ file: victim, why: `withheld — ${name} sits beside it` })
+      }
       continue
     }
     const r = await sh([
@@ -108,10 +118,13 @@ async function main(): Promise<number> {
     ])
     const size = await stat(mp4Path).then((s) => s.size).catch(() => 0)
     if (r.code !== 0 || size === 0) {
-      // no uploadable artifact survives: delete whatever ffmpeg left
+      // no uploadable artifact survives: delete whatever ffmpeg left —
+      // and print ffmpeg's own words on BOTH branches: the 0 B case is
+      // precisely where its stderr is the only diagnostic there is
       await unlink(mp4Path).catch(() => {})
       const why = r.code !== 0 ? `ffmpeg exited ${r.code}` : `ffmpeg exited 0 but ${mp4} is 0 B`
-      fail(`→ ${name}: ${why}${r.code !== 0 ? ` ↓\n${indent(r.err)}` : ""}`)
+      const words = r.err.trim()
+      fail(`→ ${name}: ${why}${words ? ` ↓\n${indent(words)}` : ""}`)
       lost.push({ file: name, why })
       continue
     }
@@ -136,7 +149,10 @@ async function main(): Promise<number> {
     const r = await sh(
       [
         "curl", "-sS",
-        // a stalled POST dies loud after two minutes, named, instead of never
+        // a stall dies loud and early — NOT a wall clock on a slow pipe:
+        "--connect-timeout", "10",
+        "--speed-limit", "10240", "--speed-time", "20",
+        // --max-time stays the outer bound on a genuinely slow upload
         "--max-time", "120",
         `https://uploads.github.com/user-attachments/assets?${qs}`,
         "-X", "POST",
