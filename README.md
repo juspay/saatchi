@@ -15,26 +15,20 @@ environment is the whole contract between them.
 
 ## Using saatchi in your repo
 
-Zero to shots on a PR, six moves:
+One line to your coding agent:
 
-1. `nix run github:juspay/saatchi` — no `.saatchi/` yet, so saatchi scaffolds
-   one (`mod.just`, `evidence.ts`, `fixtures/`, `.gitignore`) and stops.
-2. Edit `.saatchi/mod.just`'s `serve` recipe to start YOUR app in the
-   foreground. The env is the whole contract: `PORT` to bind (saatchi polls
-   it for a 200), `HOME` (already `.saatchi/home/`), `DATA` (`fixtures/`, or
-   a `data/` you seeded). The recipe runs in saatchi's bare env, not your
-   toolchain — re-enter it (`exec nix develop --command …`) — or the recipe
-   dies with a 127 in app.log and saatchi exits 2 (see below).
-3. Drop default data into `.saatchi/fixtures/` (tracked); a throwaway
-   `.saatchi/data/` (untracked) shadows it for one-offs.
-4. Write the section: `.saatchi/evidence.ts` default-exports one async
-   function — `shot("name")` per beat. Add `export const record = true` for
-   video instead of stills. Sections are throwaway on purpose.
-5. `nix run github:juspay/saatchi` — app boots, section runs, shots land in
-   `.saatchi/shots/`; exit 0/1/2 says which stage failed (below).
-6. `nix run github:juspay/saatchi#publish >> body.md` — shots upload to the
-   repo's user-attachments; the markdown block lands in your draft. Paste it
-   under `## Evidence` on the PR, the section beside it in a `<details>`.
+```text
+Set up this repo to use juspay/saatchi by following the instructions at https://github.com/juspay/saatchi
+```
+
+The agent lands on this page, and the page is the manual: the scaffold
+(transcript below), the `serve` env contract (adapter section),
+the section and video shapes, the run loop, `#publish`. An agent with no
+other context gets from zero to shots-on-a-PR without leaving it.
+
+Prefer doing it by hand? The scaffold's files are self-describing — the
+env contract is in `mod.just`'s header — and the UX below is the loop
+you'd walk anyway.
 
 ## The consumer's directory
 
@@ -59,8 +53,10 @@ it when in doubt.
 ## .saatchi/mod.just — the adapter, whole
 
 A justfile module; saatchi runs its `serve` recipe in the foreground and owns
-the process, its output, its death. It can also be run by hand for debugging:
-`PORT=7788 DATA=.saatchi/fixtures just -f .saatchi/mod.just serve`.
+the process, its output, its death. The recipe runs in saatchi's bare env,
+not your toolchain — re-enter yours (`exec nix develop --command …`), or it
+dies 127 in app.log and saatchi exits 2. It can also be run by hand for
+debugging: `PORT=7788 DATA=.saatchi/fixtures just -f .saatchi/mod.just serve`.
 
     # env from saatchi: PORT (bind), HOME (already .saatchi/home), DATA (serve this)
     serve:
