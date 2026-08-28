@@ -57,6 +57,14 @@ function muteHostRequirementsChatter() {
   }) as typeof process.stderr.write
 }
 
+function say(line: string) {
+  console.log(line)
+}
+
+function fail(line: string) {
+  console.error(line)
+}
+
 function failLine(err: unknown): string {
   if (err && typeof err === "object") {
     const e = err as { name?: string; message?: string }
@@ -70,16 +78,17 @@ function failLine(err: unknown): string {
 }
 
 async function main() {
+  muteHostRequirementsChatter()
   const port = process.env.PORT
   if (!port) {
-    console.error("saatchi: FAIL — PORT is not set")
+    fail("saatchi: FAIL — PORT is not set")
     process.exit(2)
   }
   const origin = `http://127.0.0.1:${port}`
   const evidencePath = process.env.SAATCHI_EVIDENCE
   const shotsDir = process.env.SAATCHI_SHOTS
   if (!evidencePath || !shotsDir) {
-    console.error("saatchi: FAIL — SAATCHI_EVIDENCE / SAATCHI_SHOTS are not set")
+    fail("saatchi: FAIL — SAATCHI_EVIDENCE / SAATCHI_SHOTS are not set")
     process.exit(2)
   }
   const startMs = Number(process.env.SAATCHI_START_MS || Date.now())
@@ -87,24 +96,23 @@ async function main() {
   try {
     await waitReady(origin, 30_000)
   } catch (e) {
-    console.error(`saatchi: FAIL — ${failLine(e)}`)
+    fail(`saatchi: FAIL — ${failLine(e)}`)
     process.exit(2)
   }
 
   const up = ((Date.now() - startMs) / 1000).toFixed(1)
-  console.log(`saatchi: app  → up ${up}s, ready`)
+  say(`saatchi: app  → up ${up}s, ready`)
 
   const sectionMod = await import(pathToFileURL(evidencePath).href)
   const section = sectionMod.default
   if (typeof section !== "function") {
-    console.error("saatchi: FAIL — evidence.ts must default-export an async function")
+    fail("saatchi: FAIL — evidence.ts must default-export an async function")
     process.exit(1)
   }
   const record: boolean = sectionMod.record === true
   const names = shotNamesFrom(await Bun.file(evidencePath).text())
   const taken: string[] = []
 
-  muteHostRequirementsChatter()
   const executablePath = process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH || undefined
   const browser = await chromium.launch({
     headless: true,
@@ -119,25 +127,25 @@ async function main() {
     const shot = async (name: string) => {
       taken.push(name)
       if (record) {
-        console.log(`saatchi: shot → ${name}`)
+        say(`saatchi: shot → ${name}`)
         return
       }
       const rel = `.saatchi/shots/${name}.png`
       await captured.page.screenshot({ path: `${shotsDir}/${name}.png`, fullPage: true })
-      console.log(`saatchi: shot → ${rel}`)
+      say(`saatchi: shot → ${rel}`)
     }
     await section({ page: captured.page, shot } satisfies Saatchi)
   } catch (e) {
     failed = true
     const next = names[taken.length] ?? taken.at(-1) ?? "before first shot"
-    console.error(`saatchi: FAIL at shot "${next}" — ${failLine(e)}`)
+    fail(`saatchi: FAIL at shot "${next}" — ${failLine(e)}`)
   } finally {
     await captured.finalize()
     await browser.close()
   }
 
   if (!failed && record) {
-    console.log(`saatchi: shot → .saatchi/shots/record.mp4`)
+    say(`saatchi: shot → .saatchi/shots/record.mp4`)
   }
   if (failed) process.exit(1)
 }
