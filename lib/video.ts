@@ -44,8 +44,23 @@ export async function openCaptured(
       )
       const errText = proc.stderr ? await new Response(proc.stderr).text() : ""
       const code = await proc.exited
+      // publish picks up whatever shots/ holds, so a failed transcode must
+      // leave NO mp4 behind it — a partial record.mp4 would upload as evidence
       if (code !== 0) {
+        try {
+          await Bun.file(mp4).unlink()
+        } catch {
+          // nothing landed to delete
+        }
         throw new Error(errText.trim() || `ffmpeg exited ${code}`)
+      }
+      if (Bun.file(mp4).size === 0) {
+        try {
+          await Bun.file(mp4).unlink()
+        } catch {
+          // already gone
+        }
+        throw new Error("ffmpeg exited 0 but record.mp4 is 0 B")
       }
       try {
         await Bun.file(webm).unlink()

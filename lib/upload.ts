@@ -40,6 +40,13 @@ export function stem(name: string): string {
 
 export type Landed = { file: string; url: string }
 
+/** 0 B is real information — a floored "1 kB" hides exactly the dead artifact. */
+export function sizeOf(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+  if (n >= 1024) return `${Math.round(n / 1024)} kB`
+  return `${n} B`
+}
+
 /** {"id":42} → "42" — the field, or null when it isn't there or isn't json. */
 export function field(json: string, key: string): string | null {
   try {
@@ -50,14 +57,20 @@ export function field(json: string, key: string): string | null {
   }
 }
 
+/** `[`, `]`, the escape char itself: any of them in the alt breaks the image syntax. */
+function alt(name: string): string {
+  return stem(name).replace(/([\\\[\]])/g, "\\$1")
+}
+
 /**
  * The ONE markdown block on stdout, ready to paste into a PR body:
- * images embed; a video is a bare URL on its own line
- * (GitHub renders a player; image syntax does not).
+ * images embed; everything else is a bare URL on its own line —
+ * GitHub renders a player for a video URL, while image syntax on a video
+ * renders a player-shaped nothing, and on a pdf, a broken image icon.
  */
 export function markdown(landed: Landed[]): string {
   return landed
-    .map(({ file, url }) => (isVideo(file) ? url : `![${stem(file)}](${url})`))
+    .map(({ file, url }) => ((mimeFor(file) ?? "").startsWith("image/") ? `![${alt(file)}](${url})` : url))
     .join("\n\n")
 }
 
@@ -67,10 +80,10 @@ export function httpStory(code: number, body: string): string {
     return `uploads.github.com rejected the token (HTTP ${code}) — run \`gh auth login\`; the token needs repo access`
   }
   if (code === 404) {
-    return `no repository with this id, or no push rights on it (HTTP 404) — the target is what \`gh repo view\` resolves here`
+    return `no repository with this id, or no push rights on it (HTTP 404) — the id came from \`gh api repos/{owner}/{repo}\`; \`gh repo view --json id\` returns a graph node id and 404s here`
   }
   if (code === 422) {
-    return `unsupported type (HTTP 422)`
+    return `usually an unsupported type — GitHub also 422s on size/validation refusals (HTTP 422)`
   }
   const clip = body.replace(/\s+/g, " ").trim().slice(0, 200)
   return `HTTP ${code}${clip ? ` — ${clip}` : ""}`

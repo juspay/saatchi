@@ -60,11 +60,19 @@
         };
       });
       checks = forAllSystems (pkgs: {
-        # publish's pure parts — mime table, webm detection, markdown shaping.
+        # publish's pure parts — mime table, webm detection, markdown shaping —
+        # plus the io half's parse/resolve and the stdout contract's grep shape.
         # no network; what CI can honestly cover of publish.
-        publish = pkgs.runCommand "saatchi-publish-pure" { nativeBuildInputs = [ pkgs.bun ]; } ''
-          cp ${./lib}/upload.ts ${./lib}/upload.test.ts .
+        publish = pkgs.runCommand "saatchi-publish-pure" { nativeBuildInputs = [ pkgs.bun pkgs.gnugrep ]; } ''
+          export HOME=$TMPDIR
+          cp ${./lib}/upload.ts ${./lib}/upload.test.ts ${./lib}/publish.ts .
           bun test ./upload.test.ts
+          # publish.ts has no unit tests; at minimum it must parse and resolve
+          # (--no-bundle + --outdir is broken in this bun; bundle to /dev/null)
+          bun build ./publish.ts > /dev/null
+          # stdout is the markdown block, always: exactly one writer, no console litter
+          test "$(grep -c 'process\.stdout\.write' publish.ts)" -eq 1
+          ! grep -En 'console\.(log|warn|info)' publish.ts
           touch $out
         '';
       });

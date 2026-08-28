@@ -131,7 +131,8 @@ shot_count() {
   (
     shopt -s nullglob
     n=0
-    for f in "${dot}/shots"/*.png "${dot}/shots"/*.mp4; do
+    # webm counts too: a recording whose transcode failed is still a kept shot
+    for f in "${dot}/shots"/*.png "${dot}/shots"/*.mp4 "${dot}/shots"/*.webm; do
       n=$((n + 1))
     done
     printf '%s' "${n}"
