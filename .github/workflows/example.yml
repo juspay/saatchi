@@ -1,0 +1,25 @@
+name: example
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  example:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v19
+      - name: photograph the example
+        working-directory: example
+        run: nix run ..
+      - name: shots exist
+        run: |
+          test -f example/.saatchi/shots/list.png
+          test -f example/.saatchi/shots/item.png
+          test -f example/.saatchi/shots/back.png
