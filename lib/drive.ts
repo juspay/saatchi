@@ -39,6 +39,24 @@ function shotNamesFrom(source: string): string[] {
   return [...source.matchAll(/shot\(\s*["'`]([^"'`]+)["'`]\s*\)/g)].map((m) => m[1]!)
 }
 
+/** Playwright writes this to stderr when PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS is set. */
+function muteHostRequirementsChatter() {
+  const raw = process.stderr.write.bind(process.stderr)
+  process.stderr.write = ((
+    chunk: string | Uint8Array,
+    encoding?: BufferEncoding | ((err?: Error | null) => void),
+    cb?: (err?: Error | null) => void,
+  ) => {
+    const text = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString()
+    if (text.includes("Skipping host requirements validation")) {
+      if (typeof encoding === "function") encoding()
+      else if (cb) cb()
+      return true
+    }
+    return raw(chunk, encoding as never, cb)
+  }) as typeof process.stderr.write
+}
+
 function failLine(err: unknown): string {
   if (err && typeof err === "object") {
     const e = err as { name?: string; message?: string }
@@ -86,6 +104,7 @@ async function main() {
   const names = shotNamesFrom(await Bun.file(evidencePath).text())
   const taken: string[] = []
 
+  muteHostRequirementsChatter()
   const executablePath = process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH || undefined
   const browser = await chromium.launch({
     headless: true,
