@@ -57,7 +57,7 @@ export function httpStory(code: number, body: string): string {
     return `uploads.github.com rejected the token (HTTP ${code}) — run \`gh auth login\`; the token needs repo access`
   }
   if (code === 404) {
-    return `no repository with this id, or no push rights on it (HTTP 404) — \`gh repo view\` in this worktree decides the target`
+    return `no repository with this id, or no push rights on it (HTTP 404) — the target is what \`gh repo view\` resolves here`
   }
   if (code === 422) {
     return `unsupported type (HTTP 422)`
