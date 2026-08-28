@@ -13,6 +13,28 @@ a headless browser, writes one screenshot per named step into
 saatchi knows no app: the app is whatever the `serve` recipe starts, and the
 environment is the whole contract between them.
 
+## Using saatchi in your repo
+
+Zero to shots on a PR, six moves:
+
+1. `nix run github:juspay/saatchi` — no `.saatchi/` yet, so saatchi scaffolds
+   one (`mod.just`, `evidence.ts`, `fixtures/`, `.gitignore`) and stops.
+2. Edit `.saatchi/mod.just`'s `serve` recipe to start YOUR app in the
+   foreground. The env is the whole contract: `PORT` to bind (saatchi polls
+   it for a 200), `HOME` (already `.saatchi/home/`), `DATA` (`fixtures/`, or
+   a `data/` you seeded). The recipe runs in saatchi's bare env, not your
+   toolchain — re-enter it (`exec nix develop --command …`) or you get exit 127.
+3. Drop default data into `.saatchi/fixtures/` (tracked); a throwaway
+   `.saatchi/data/` (untracked) shadows it for one-offs.
+4. Write the section: `.saatchi/evidence.ts` default-exports one async
+   function — `shot("name")` per beat. Add `export const record = true` for
+   video instead of stills. Sections are throwaway on purpose.
+5. `nix run github:juspay/saatchi` — app boots, section runs, shots land in
+   `.saatchi/shots/`; exit 0/1/2 says which stage failed (below).
+6. `nix run github:juspay/saatchi#publish >> body.md` — shots upload to the
+   repo's user-attachments; the markdown block lands in your draft. Paste it
+   under `## Evidence` on the PR, the section beside it in a `<details>`.
+
 ## The consumer's directory
 
     .saatchi/
@@ -23,7 +45,8 @@ environment is the whole contract between them.
     ├── home/           throwaway  the app's HOME; seed by writing into it
     ├── data/           throwaway  what the app serves, when present
     ├── app.log         throwaway  the app's stdout+stderr, captured by saatchi
-    └── shots/          throwaway  one png per shot() call; #publish uploads this dir
+    └── shots/          throwaway  one png per shot() call — or record.mp4 when
+                                   recording; #publish uploads this dir
 
     ready  = the app's port answers 200 (30s, extended while the app lives)
     fresh  = git clean -fx .saatchi/
@@ -101,31 +124,83 @@ Default-export one async function; `page` arrives past readiness.
 Sections are throwaway: never committed; pasted into the PR body (a
 `<details>` block) beside their published shots.
 
+## Video — when the evidence is motion
+
+One line in the section and the run records the session instead of
+taking stills:
+
+    export const record = true
+
+playwright captures webm; saatchi transcodes in place (ffmpeg, moov at
+the front so the player can start at once) and lands exactly one shot:
+`.saatchi/shots/record.mp4`. `shot()` calls don't screenshot in a record
+run — they still mark the section's beats in the log; keep them. A run
+is whole-video or stills, not both.
+
+#publish treats the mp4 like any other shot, and its output line is the
+bare URL — which GitHub renders as a player (see Publishing below).
+
+Prefer video when the evidence IS time passing — a stream appending, a
+spinner resolving, a clock ticking (the example app keeps one ticking
+for exactly this). Prefer stills for states; a reviewer scrubs stills
+faster than a timeline.
+
 ## Publishing the shots
 
 After a run, from the same worktree — publish takes no arguments either:
 
     nix run github:juspay/saatchi#publish
 
-Everything .saatchi/shots/ holds goes up, one POST per shot to the repo's
-user-attachments endpoint — the repo is the one `gh repo view` sees here,
-the token is `gh auth token`. Any .webm is transcoded to mp4 first
-(ffmpeg; on failure you get ffmpeg's own words). stdout is exactly ONE
-markdown block:
+It settles the repo (`gh api repos/{owner}/{repo}` — the numeric id; the
+`gh repo view --json id` one is a graph node id and the endpoint 404s on
+it) and the token (`gh auth token`, handed to curl on stdin, never in
+argv) BEFORE touching anything: until both pass, .saatchi/shots/ is
+unmutated.
+
+Then any .webm transcodes to mp4 (ffmpeg, `+faststart`; on failure you
+get ffmpeg's own words). Two laws hold here: a failed transcode's
+partial mp4 is deleted — a re-run can never upload a shard of a dead run
+— and an existing X.mp4 is never overwritten: publish refuses BOTH it
+and the X.webm beside it, and asks you to delete the wrong one. After
+that, one POST per shot to the repo's user-attachments endpoint, curl
+`--max-time 120`, so a stalled upload dies loud and named instead of
+ever.
+
+stdout is exactly ONE markdown block:
 
     ![before-dismiss](https://github.com/user-attachments/assets/…)
+
     ![after-dismiss](https://github.com/user-attachments/assets/…)
 
     https://github.com/user-attachments/assets/…
 
-Images embed; a video is a bare URL on its own line — GitHub renders a
-player for it, while image syntax renders nothing. Everything saatchi
-says goes to stderr, so the block is safe to append to a draft body:
+Images embed; a video or pdf is a bare URL on its own line — GitHub
+renders a player for a bare video URL, while image syntax there renders
+nothing. Everything saatchi says goes to stderr, so the block is safe
+to append to a draft body:
 
     nix run github:juspay/saatchi#publish >> body.md
 
-Paste body.md into the PR body (say under `## Evidence`, beside the
-section's `<details>`). Failures are named: no shots → it says so;
-401/403 → the auth story; 404 → repo id or push rights; 422 → an
-unsupported type, the file named. A run that lands only some shots
-reports what landed and what didn't, exit 1.
+The block ends with a blank line, so a second append stays a second
+block — a bare video URL butted against the previous block would render
+as a link, no player. Paste body.md into the PR body (say under
+`## Evidence`, beside the section's `<details>`).
+
+    0  every shot landed; the block on stdout is complete
+    1  something didn't land — what's on stdout still landed (paste it
+       whole or not at all); stderr names each file that didn't, and why
+
+Failures are named: no shots → it says so; 401/403 → the auth story;
+404 → repo id or push rights; 422 → unsupported type or a size refusal,
+the file named. And the same death guarantee as saatchi itself: every
+process publish started — bun, ffmpeg, curl — is dead when it exits; a
+signal to the wrapper kills the whole tree.
+
+## saatchi in the wild
+
+- [juspay/olai's `.saatchi/`](https://github.com/juspay/olai/tree/master/.saatchi)
+  — the living consumer; its `mod.just` (`nix develop` → `olai web`) is a worked adapter.
+- [olai#419 — the comment "Evidence, republished via saatchi#publish"](https://github.com/juspay/olai/pull/419#issuecomment-5457471140)
+  — shots re-uploaded through #publish, the markdown block pasted as it came out.
+- [olai#421](https://github.com/juspay/olai/pull/421) — the Padi readout: its PR body's evidence block, shot by saatchi.
+- [olai#422](https://github.com/juspay/olai/pull/422) — pi over acp: same shape, saatchi shots in the body.
