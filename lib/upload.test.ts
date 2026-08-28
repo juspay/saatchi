@@ -1,0 +1,100 @@
+import { describe, expect, test } from "bun:test"
+import { MIME, ext, httpStory, isVideo, isWebm, markdown, mimeFor, stem } from "./upload.ts"
+
+describe("the mime table", () => {
+  test("shots speak their types", () => {
+    expect(mimeFor("before-dismiss.png")).toBe("image/png")
+    expect(mimeFor("record.mp4")).toBe("video/mp4")
+    expect(mimeFor("clip.webm")).toBe("video/webm")
+    expect(mimeFor("photo.JPEG")).toBe("image/jpeg")
+    expect(mimeFor("anim.gif")).toBe("image/gif")
+    expect(mimeFor("notes.pdf")).toBe("application/pdf")
+  })
+
+  test("unknown is null — refused locally, before GitHub sees it", () => {
+    expect(mimeFor("cursed.svg")).toBeNull()
+    expect(mimeFor("notes.txt")).toBeNull()
+    expect(mimeFor("no-extension")).toBeNull()
+    expect(mimeFor("trailingdot.")).toBeNull()
+    expect(mimeFor(".dotfile")).toBeNull()
+  })
+
+  test("video detection rides the table", () => {
+    expect(isVideo("record.mp4")).toBe(true)
+    expect(isVideo("clip.mov")).toBe(true)
+    expect(isVideo("before.png")).toBe(false)
+    expect(isVideo("cursed.svg")).toBe(false)
+  })
+})
+
+describe("webm detection", () => {
+  test("only webm transcodes — case-insensitively", () => {
+    expect(isWebm("take.webm")).toBe(true)
+    expect(isWebm("TAKE.WEBM")).toBe(true)
+    expect(isWebm("take.mp4")).toBe(false)
+    expect(isWebm("webm-as-png.png")).toBe(false)
+  })
+})
+
+describe("stem", () => {
+  test("strips the known extension, keeps the rest", () => {
+    expect(stem("before-dismiss.png")).toBe("before-dismiss")
+    expect(stem("a.PNG")).toBe("a")
+    expect(stem("noext")).toBe("noext")
+  })
+})
+
+describe("markdown shaping", () => {
+  const landed = [
+    { file: "before.png", url: "https://u/1" },
+    { file: "record.mp4", url: "https://u/2" },
+    { file: "after.png", url: "https://u/3" },
+  ]
+
+  test("an image embeds with the stem as alt", () => {
+    expect(markdown([landed[0]!])).toBe("![before](https://u/1)")
+  })
+
+  test("a video is the bare URL — image syntax renders no player", () => {
+    expect(markdown([landed[1]!])).toBe("https://u/2")
+  })
+
+  test("order kept; blank line between; no trailing newline", () => {
+    expect(markdown(landed)).toBe("![before](https://u/1)\n\nhttps://u/2\n\n![after](https://u/3)")
+  })
+
+  test("nothing landed → nothing on stdout", () => {
+    expect(markdown([])).toBe("")
+  })
+})
+
+describe("http stories", () => {
+  test("401/403 is the auth story", () => {
+    expect(httpStory(401, "")).toContain("gh auth login")
+    expect(httpStory(403, "")).toContain("HTTP 403")
+  })
+
+  test("404 is the repo/push-rights story", () => {
+    expect(httpStory(404, "")).toMatch(/push rights/)
+    expect(httpStory(404, "")).toContain("gh repo view")
+  })
+
+  test("422 is the unsupported-type refusal", () => {
+    expect(httpStory(422, "")).toContain("unsupported type")
+  })
+
+  test("anything else keeps the body's first words", () => {
+    expect(httpStory(500, '{"message":"boom"}')).toBe('HTTP 500 — {"message":"boom"}')
+    expect(httpStory(500, "")).toBe("HTTP 500")
+  })
+})
+
+describe("ext", () => {
+  test("edge cases", () => {
+    expect(ext("a.png")).toBe("png")
+    expect(ext("archive.tar.gz")).toBe("gz")
+    expect(ext(".hidden")).toBe("")
+    expect(ext("noext")).toBe("")
+    expect(ext("dot.")).toBe("")
+  })
+})

@@ -37,6 +37,36 @@
             '';
           });
         };
+        publish = {
+          type = "app";
+          program = nixpkgs.lib.getExe (pkgs.writeShellApplication {
+            name = "saatchi-publish";
+            runtimeInputs = [
+              pkgs.bash
+              pkgs.coreutils
+              pkgs.bun
+              pkgs.curl
+              pkgs.gh
+              pkgs.ffmpeg
+            ];
+            runtimeEnv = {
+              # same flake-source rule as the default app: ${self}, git-tracked only
+              SAATCHI_ROOT = "${self}";
+            };
+            text = ''
+              exec bash ${./publish.sh} "$@"
+            '';
+          });
+        };
+      });
+      checks = forAllSystems (pkgs: {
+        # publish's pure parts — mime table, webm detection, markdown shaping.
+        # no network; what CI can honestly cover of publish.
+        publish = pkgs.runCommand "saatchi-publish-pure" { nativeBuildInputs = [ pkgs.bun ]; } ''
+          cp ${./lib}/upload.ts ${./lib}/upload.test.ts .
+          bun test ./upload.test.ts
+          touch $out
+        '';
       });
     };
 }
