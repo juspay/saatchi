@@ -1,7 +1,6 @@
 import type { Browser, BrowserContext, Page } from "playwright-core"
 
-/** Section opt-in: `export const record = true` → one mp4 instead of stills. */
-export const record = true
+// Section opt-in is `export const record = true` on evidence.ts (mp4, not stills).
 
 export async function openCaptured(
   browser: Browser,
