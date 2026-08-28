@@ -2,7 +2,6 @@
   description = "saatchi: photograph an app doing the thing";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   outputs = { self, nixpkgs }:
-    # self is the flake source copied into SAATCHI_ROOT below via ./.
     let forAllSystems = f: nixpkgs.lib.genAttrs
       [ "x86_64-linux" "aarch64-darwin" ]
       (system: f nixpkgs.legacyPackages.${system});
@@ -23,7 +22,7 @@
             runtimeEnv = {
               PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
               PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "1";
-              SAATCHI_ROOT = "${./.}";
+              SAATCHI_ROOT = "${self}";
               PLAYWRIGHT_CORE = "${pkgs.playwright-driver}";
             } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
               FONTCONFIG_FILE = pkgs.makeFontsConf {
