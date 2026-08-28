@@ -51,10 +51,10 @@ async function main(): Promise<number> {
 
   // — webm → mp4, in place; ffmpeg's own words on failure (v1's video lesson) —
   const lost: { file: string; why: string }[] = []
-  const files: string[] = []
+  const files = new Set<string>()
   for (const name of names) {
     if (!isWebm(name)) {
-      files.push(name)
+      files.add(name)
       continue
     }
     const mp4 = name.replace(/\.webm$/i, ".mp4")
@@ -72,9 +72,9 @@ async function main(): Promise<number> {
     }
     await unlink(join(shotsDir, name)).catch(() => {})
     say(`webm → ${mp4}`)
-    if (!files.includes(mp4)) files.push(mp4)
+    files.add(mp4)
   }
-  const queue = files.sort()
+  const queue = [...files].sort()
 
   // — the repo and the token: gh, run from the consumer's worktree, no flags —
   // (`gh repo view --json id` is a GraphQL NODE id; the endpoint 404s on it.
@@ -142,8 +142,9 @@ async function main(): Promise<number> {
       say(`up   → ${file} (${sizeOf(n)}, ${((Date.now() - t1) / 1000).toFixed(1)}s)`)
       continue
     }
-    fail(`→ ${file}: ${httpStory(code, body)}`)
-    lost.push({ file, why: httpStory(code, body) })
+    const story = httpStory(code, body)
+    fail(`→ ${file}: ${story}`)
+    lost.push({ file, why: story })
   }
 
   // — stdout: the markdown block; stderr: the account of it —
@@ -160,7 +161,7 @@ async function main(): Promise<number> {
     }
     return 1
   }
-  say(`sent ${landed.length} up (${secs()}s) — markdown on stdout`)
+  say(`up (${landed.length} shots, ${secs()}s) — markdown on stdout`)
   return 0
 }
 
