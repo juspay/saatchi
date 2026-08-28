@@ -79,23 +79,24 @@ async function main(): Promise<number> {
   //   (X.webm + X.mp4) is refused, both withheld, the human disambiguates.
   const lost: { file: string; why: string }[] = []
   const files = new Set<string>()
-  const withheld = new Set<string>()
+  const webms: string[] = []
   for (const name of names) {
-    if (withheld.has(name)) continue
-    if (!isWebm(name)) {
-      files.add(name)
-      continue
-    }
+    if (isWebm(name)) webms.push(name)
+    else files.add(name)
+  }
+  for (const name of webms) {
     const mp4 = name.replace(/\.webm$/i, ".mp4")
-    if (files.has(mp4) || (await Bun.file(join(shotsDir, mp4)).exists())) {
+    const mp4Path = join(shotsDir, mp4)
+    // exists() is the whole check: every member of `files` is on disk, and so
+    // is any mp4 an EARLIER refusal spared — a later same-stem webm may never
+    // -y over what the first refusal protected
+    if (await Bun.file(mp4Path).exists()) {
       fail(`→ ${name}: ${mp4} sits beside it — dead transcode debris or two shots on one stem; refusing BOTH. Delete the wrong one and re-run`)
       files.delete(mp4)
-      withheld.add(mp4)
       lost.push({ file: name, why: `${mp4} exists beside it` })
       lost.push({ file: mp4, why: `withheld — ${name} sits beside it` })
       continue
     }
-    const mp4Path = join(shotsDir, mp4)
     const r = await sh([
       "ffmpeg", "-y",
       "-i", join(shotsDir, name),
@@ -109,13 +110,9 @@ async function main(): Promise<number> {
     if (r.code !== 0 || size === 0) {
       // no uploadable artifact survives: delete whatever ffmpeg left
       await unlink(mp4Path).catch(() => {})
-      if (r.code !== 0) {
-        fail(`→ ${name}: ffmpeg said ↓\n${indent(r.err)}`)
-        lost.push({ file: name, why: `ffmpeg exited ${r.code}` })
-      } else {
-        fail(`→ ${name}: ffmpeg exited 0 but ${mp4} is 0 B`)
-        lost.push({ file: name, why: "ffmpeg produced a 0 B mp4" })
-      }
+      const why = r.code !== 0 ? `ffmpeg exited ${r.code}` : `ffmpeg exited 0 but ${mp4} is 0 B`
+      fail(`→ ${name}: ${why}${r.code !== 0 ? ` ↓\n${indent(r.err)}` : ""}`)
+      lost.push({ file: name, why })
       continue
     }
     await unlink(join(shotsDir, name)).catch(() => {})
