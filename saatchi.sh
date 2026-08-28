@@ -103,7 +103,7 @@ run_dir="$(mktemp -d "${TMPDIR:-/tmp}/saatchi.XXXXXX")"
 mkdir -p "${run_dir}/node_modules"
 ln -s "${PLAYWRIGHT_CORE:?PLAYWRIGHT_CORE is not set}" "${run_dir}/node_modules/playwright-core"
 ln -s "${PLAYWRIGHT_CORE}" "${run_dir}/node_modules/playwright"
-cp "${SAATCHI_ROOT}/lib/drive.ts" "${SAATCHI_ROOT}/lib/video.ts" "${run_dir}/"
+cp "${SAATCHI_ROOT}/lib/"*.ts "${run_dir}/"
 
 : > "${dot}/app.log"
 set -m
