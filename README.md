@@ -15,16 +15,41 @@ environment is the whole contract between them.
 
 ## Using saatchi in your repo
 
-One line to your coding agent:
+Two lines into your coding agent:
 
 ```text
-Set up this repo to use juspay/saatchi by following the instructions at https://github.com/juspay/saatchi
+Set up this repo to use juspay/saatchi by following the instructions at https://github.com/juspay/saatchi/blob/main/README.md
+Run `nix run github:juspay/saatchi` and follow what it prints.
 ```
 
-The agent lands on this page, and the page is the manual: the scaffold
-(transcript below), the `serve` env contract (adapter section),
-the section and video shapes, the run loop, `#publish`. An agent with no
-other context gets from zero to shots-on-a-PR without leaving it.
+The first for read-first agents, the second for run-first agents — the
+scaffold's own output hands the runner back to this page. The page is the
+manual: the scaffold (transcript below), the `serve` env contract (adapter
+section), the section and video shapes, the run loop, `#publish`. An agent
+with no other context gets from zero to shots-on-a-PR without leaving it.
+
+The point of the visit is two things left BEHIND, not a one-off run:
+
+1. the scaffolded `.saatchi/`, with the `serve` adapter VERIFIED by one
+   clean run — shots landed in `.saatchi/shots/`, not just a recipe that
+   looks right;
+2. the repo's standing agent docs: an Evidence section in `CLAUDE.md`
+   (create it if absent, and point `AGENTS.md` at it — a symlink to
+   `CLAUDE.md` is the house convention) — so every FUTURE session already
+   knows the flow:
+
+```markdown
+## PR evidence
+
+- Produce: write the throwaway section at `.saatchi/evidence.ts`, then
+  `nix run github:juspay/saatchi`; shots land in `.saatchi/shots/`.
+- Publish: `nix run github:juspay/saatchi#publish` — it prints a paste-ready
+  markdown block (videos handled); paste it on the PR.
+- The full contract: [saatchi's README](https://github.com/juspay/saatchi).
+```
+
+[olai's CLAUDE.md](https://github.com/juspay/olai/blob/master/CLAUDE.md)
+("PR evidence uploads") is the worked example to mirror.
 
 Prefer doing it by hand? The scaffold's files are self-describing — the
 env contract is in `mod.just`'s header — and the UX below is the loop
