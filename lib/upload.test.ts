@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { MIME, ext, field, httpStory, isVideo, isWebm, markdown, mimeFor, stem } from "./upload.ts"
+import { MIME, ext, field, httpStory, isWebm, markdown, mimeFor, siblingsOf, sizeOf, stem } from "./upload.ts"
 
 describe("the mime table", () => {
   test("shots speak their types", () => {
@@ -19,11 +19,28 @@ describe("the mime table", () => {
     expect(mimeFor(".dotfile")).toBeNull()
   })
 
-  test("video detection rides the table", () => {
-    expect(isVideo("record.mp4")).toBe(true)
-    expect(isVideo("clip.mov")).toBe(true)
-    expect(isVideo("before.png")).toBe(false)
-    expect(isVideo("cursed.svg")).toBe(false)
+})
+
+describe("siblingsOf — what the transcode target could clobber", () => {
+  test("the exact name answers to itself", () => {
+    expect(siblingsOf(new Set(["clip.mp4"]), "clip.mp4")).toEqual(["clip.mp4"])
+  })
+
+  test("APFS lies about case: the clobberable file answers to its own spelling", () => {
+    expect(siblingsOf(new Set(["Clip.mp4"]), "clip.mp4")).toEqual(["Clip.mp4"])
+    expect(siblingsOf(new Set(["CLIP.MP4"]), "clip.mp4")).toEqual(["CLIP.MP4"])
+  })
+
+  test("every case-folded twin is named, never half-withheld", () => {
+    expect(siblingsOf(new Set(["Clip.mp4", "clip.MP4", "other.png"]), "clip.mp4").sort()).toEqual([
+      "Clip.mp4",
+      "clip.MP4",
+    ])
+  })
+
+  test("no sibling → empty", () => {
+    expect(siblingsOf(new Set(["other.png", "clip.webm"]), "clip.mp4")).toEqual([])
+    expect(siblingsOf(new Set(), "clip.mp4")).toEqual([])
   })
 })
 
@@ -59,6 +76,17 @@ describe("markdown shaping", () => {
     expect(markdown([landed[1]!])).toBe("https://u/2")
   })
 
+  test("a pdf is bare too — image syntax renders a broken image icon", () => {
+    expect(markdown([{ file: "notes.pdf", url: "https://u/4" }])).toBe("https://u/4")
+  })
+
+  test("brackets in a filename can't break the image syntax", () => {
+    expect(markdown([{ file: "we[ird]name.png", url: "https://u/5" }])).toBe(
+      "![we\\[ird\\]name](https://u/5)",
+    )
+    expect(markdown([{ file: "a\\b.png", url: "https://u/6" }])).toBe("![a\\\\b](https://u/6)")
+  })
+
   test("order kept; blank line between; no trailing newline", () => {
     expect(markdown(landed)).toBe("![before](https://u/1)\n\nhttps://u/2\n\n![after](https://u/3)")
   })
@@ -74,18 +102,34 @@ describe("http stories", () => {
     expect(httpStory(403, "")).toContain("HTTP 403")
   })
 
-  test("404 is the repo/push-rights story", () => {
+  test("404 is the repo/push-rights story — and can't send you to the node id", () => {
     expect(httpStory(404, "")).toMatch(/push rights/)
-    expect(httpStory(404, "")).toContain("gh repo view")
+    expect(httpStory(404, "")).toContain("gh api repos/{owner}/{repo}")
   })
 
-  test("422 is the unsupported-type refusal", () => {
+  test("422 is the unsupported-type (or size) refusal", () => {
     expect(httpStory(422, "")).toContain("unsupported type")
+    expect(httpStory(422, "")).toMatch(/size/)
   })
 
   test("anything else keeps the body's first words", () => {
     expect(httpStory(500, '{"message":"boom"}')).toBe('HTTP 500 — {"message":"boom"}')
     expect(httpStory(500, "")).toBe("HTTP 500")
+  })
+})
+
+describe("sizeOf", () => {
+  test("honest at the bottom — a 0 B artifact reads as 0 B", () => {
+    expect(sizeOf(0)).toBe("0 B")
+    expect(sizeOf(250)).toBe("250 B")
+    expect(sizeOf(1023)).toBe("1023 B")
+  })
+
+  test("kB and MB above", () => {
+    expect(sizeOf(1024)).toBe("1 kB")
+    expect(sizeOf(1536)).toBe("2 kB")
+    expect(sizeOf(1024 * 1024)).toBe("1.0 MB")
+    expect(sizeOf(2.5 * 1024 * 1024)).toBe("2.5 MB")
   })
 })
 

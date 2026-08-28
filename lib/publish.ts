@@ -2,7 +2,7 @@
 // stdout is the markdown block and NOTHING else; saatchi talks on stderr.
 import { readdir, stat, unlink } from "node:fs/promises"
 import { join } from "node:path"
-import { MIME, field, httpStory, isWebm, markdown, mimeFor, type Landed } from "./upload.ts"
+import { MIME, field, httpStory, isWebm, markdown, mimeFor, siblingsOf, sizeOf, type Landed } from "./upload.ts"
 
 const say = (line: string) => console.error(`saatchi: ${line}`)
 const fail = (line: string) => console.error(`saatchi: FAIL ${line}`)
@@ -15,11 +15,13 @@ function indent(block: string): string {
     .join("\n")
 }
 
-const sizeOf = (n: number) =>
-  n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`
-
-async function sh(cmd: string[]): Promise<{ code: number; out: string; err: string }> {
-  const proc = Bun.spawn(cmd, { stdin: "ignore", stdout: "pipe", stderr: "pipe" })
+async function sh(cmd: string[], input?: string): Promise<{ code: number; out: string; err: string }> {
+  const proc = Bun.spawn(cmd, {
+    // secrets ride stdin (curl -K -), never argv: /proc/*/cmdline is public
+    stdin: input == null ? "ignore" : new TextEncoder().encode(input),
+    stdout: "pipe",
+    stderr: "pipe",
+  })
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -49,34 +51,8 @@ async function main(): Promise<number> {
     return 1
   }
 
-  // — webm → mp4, in place; ffmpeg's own words on failure (v1's video lesson) —
-  const lost: { file: string; why: string }[] = []
-  const files = new Set<string>()
-  for (const name of names) {
-    if (!isWebm(name)) {
-      files.add(name)
-      continue
-    }
-    const mp4 = name.replace(/\.webm$/i, ".mp4")
-    const r = await sh([
-      "ffmpeg", "-y",
-      "-i", join(shotsDir, name),
-      "-c:v", "libx264",
-      "-pix_fmt", "yuv420p",
-      join(shotsDir, mp4),
-    ])
-    if (r.code !== 0) {
-      fail(`→ ${name}: ffmpeg said ↓\n${indent(r.err)}`)
-      lost.push({ file: name, why: `ffmpeg exited ${r.code}` })
-      continue
-    }
-    await unlink(join(shotsDir, name)).catch(() => {})
-    say(`webm → ${mp4}`)
-    files.add(mp4)
-  }
-  const queue = [...files].sort()
-
-  // — the repo and the token: gh, run from the consumer's worktree, no flags —
+  // — repo and token FIRST: transcodes below unlink files, so until gh and
+  // the token pass, nothing touches .saatchi/shots/ at all —
   // (`gh repo view --json id` is a GraphQL NODE id; the endpoint 404s on it.
   //  `gh api repos/{owner}/{repo}` — same no-flags convention — has the numeric one.)
   const repo = await sh(["gh", "api", "repos/{owner}/{repo}"])
@@ -96,6 +72,68 @@ async function main(): Promise<number> {
     return 1
   }
 
+  // — webm → mp4, in place; ffmpeg's own words on failure (v1's video lesson) —
+  // two laws make a failed transcode un-uploadable:
+  //   its partial mp4 is deleted, so a re-run can't find a corpse and ship it;
+  //   a pre-existing sibling X.mp4 — by ANY case spelling — is never clobbered:
+  //   the ambiguous PAIR is refused, both withheld, and the copy says which
+  //   file resolves which case (debris: the mp4; two shots: rename one).
+  const lost: { file: string; why: string }[] = []
+  const files = new Set<string>()
+  const webms: string[] = []
+  for (const name of names) {
+    if (isWebm(name)) webms.push(name)
+    else files.add(name)
+  }
+  for (const name of webms) {
+    const mp4 = name.replace(/\.webm$/i, ".mp4")
+    const mp4Path = join(shotsDir, mp4)
+    // resolve the target against the scan's own strings: an insensitive fs
+    // presents clip.mp4 and Clip.mp4 as distinct names for one clobberable
+    // inode — the refusal must withhold by THAT name, or it reports while
+    // shipping; exists() stays the net for what the scan couldn't name
+    const siblings = siblingsOf(files, mp4)
+    if (siblings.length > 0 || (await Bun.file(mp4Path).exists())) {
+      const victims = siblings.length > 0 ? siblings : [mp4]
+      fail(
+        `→ ${name}: ${victims.join(" + ")} beside it — refusing the set:\n` +
+          `  debris of a killed/failed transcode? delete the mp4 — the webm is the real recording; deleting IT ships the corpse.\n` +
+          `  two shots on one stem? rename one. Then re-run.`,
+      )
+      lost.push({ file: name, why: `${victims.join(" + ")} beside it` })
+      for (const victim of victims) {
+        files.delete(victim)
+        lost.push({ file: victim, why: `withheld — ${name} sits beside it` })
+      }
+      continue
+    }
+    const r = await sh([
+      "ffmpeg", "-y",
+      "-i", join(shotsDir, name),
+      "-c:v", "libx264",
+      "-pix_fmt", "yuv420p",
+      // the moov atom up front is the difference between a player and a black box
+      "-movflags", "+faststart",
+      mp4Path,
+    ])
+    const size = await stat(mp4Path).then((s) => s.size).catch(() => 0)
+    if (r.code !== 0 || size === 0) {
+      // no uploadable artifact survives: delete whatever ffmpeg left —
+      // and print ffmpeg's own words on BOTH branches: the 0 B case is
+      // precisely where its stderr is the only diagnostic there is
+      await unlink(mp4Path).catch(() => {})
+      const why = r.code !== 0 ? `ffmpeg exited ${r.code}` : `ffmpeg exited 0 but ${mp4} is 0 B`
+      const words = r.err.trim()
+      fail(`→ ${name}: ${why}${words ? ` ↓\n${indent(words)}` : ""}`)
+      lost.push({ file: name, why })
+      continue
+    }
+    await unlink(join(shotsDir, name)).catch(() => {})
+    say(`webm → ${mp4} (${sizeOf(size)})`)
+    files.add(mp4)
+  }
+  const queue = [...files].sort()
+
   // — the upload: one POST per shot (the settled curl line), in name order —
   const landed: Landed[] = []
   for (const file of queue) {
@@ -108,15 +146,23 @@ async function main(): Promise<number> {
     }
     const qs = new URLSearchParams({ name: file, content_type: mime, repository_id: repoId })
     const t1 = Date.now()
-    const r = await sh([
-      "curl", "-sS",
-      `https://uploads.github.com/user-attachments/assets?${qs}`,
-      "-X", "POST",
-      "-H", `Authorization: Bearer ${token}`,
-      "-H", "Accept: application/json",
-      "--data-binary", `@${path}`,
-      "-w", "\n%{http_code}",
-    ])
+    const r = await sh(
+      [
+        "curl", "-sS",
+        // a stall dies loud and early — NOT a wall clock on a slow pipe:
+        "--connect-timeout", "10",
+        "--speed-limit", "10240", "--speed-time", "20",
+        // --max-time stays the outer bound on a genuinely slow upload
+        "--max-time", "120",
+        `https://uploads.github.com/user-attachments/assets?${qs}`,
+        "-X", "POST",
+        "-K", "-",
+        "-H", "Accept: application/json",
+        "--data-binary", `@${path}`,
+        "-w", "\n%{http_code}",
+      ],
+      `header = "Authorization: Bearer ${token}"\n`,
+    )
     if (r.code !== 0) {
       fail(`→ ${file}: curl: ${r.err.trim() || `exit ${r.code}`}`)
       lost.push({ file, why: "curl failed" })
@@ -149,7 +195,9 @@ async function main(): Promise<number> {
 
   // — stdout: the markdown block; stderr: the account of it —
   if (landed.length > 0) {
-    process.stdout.write(`${markdown(landed)}\n`)
+    // trailing BLANK line: two `>> body.md` appends stay two blocks — a
+    // bare video URL butted onto the block above renders a link, no player
+    process.stdout.write(`${markdown(landed)}\n\n`)
   }
   if (lost.length > 0) {
     fail(`— ${lost.length} of ${lost.length + landed.length} did not land:`)
@@ -166,5 +214,7 @@ async function main(): Promise<number> {
 }
 
 if (import.meta.main) {
-  process.exit(await main())
+  // NOT process.exit(code): that can drop a buffered stdout write to a pipe —
+  // the exact `>> body.md` path. exitCode lets the event loop drain first.
+  process.exitCode = await main()
 }

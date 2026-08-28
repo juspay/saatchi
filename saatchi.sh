@@ -8,34 +8,19 @@ if [[ $# -ne 0 ]]; then
 fi
 
 SAATCHI_ROOT="${SAATCHI_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
+source "${SAATCHI_ROOT}/lib/lifecycle.sh"
 cwd="$PWD"
 dot="$cwd/.saatchi"
 
 app_pid=""
 run_dir=""
 
-kill_tree() {
-  local pid="$1"
-  local sig="$2"
-  kill "-${sig}" -- "-${pid}" 2>/dev/null || true
-  if command -v pkill >/dev/null 2>&1; then
-    pkill "-${sig}" -P "${pid}" 2>/dev/null || true
-  fi
-  kill "-${sig}" "${pid}" 2>/dev/null || true
-}
-
 teardown() {
   # ignore further signals: a second ^C in the grace window must not
   # abort before KILL, and HUP/QUIT must not skip us
   trap '' EXIT INT TERM HUP QUIT
   if [[ -n "${app_pid}" ]]; then
-    kill_tree "${app_pid}" TERM
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      kill -0 "${app_pid}" 2>/dev/null || break
-      sleep 0.1
-    done
-    kill_tree "${app_pid}" KILL
-    wait "${app_pid}" 2>/dev/null || true
+    kill_gracefully "${app_pid}"
   fi
   if [[ -n "${run_dir}" && -d "${run_dir}" ]]; then
     rm -rf "${run_dir}"
@@ -131,7 +116,8 @@ shot_count() {
   (
     shopt -s nullglob
     n=0
-    for f in "${dot}/shots"/*.png "${dot}/shots"/*.mp4; do
+    # webm counts too: a recording whose transcode failed is still a kept shot
+    for f in "${dot}/shots"/*.png "${dot}/shots"/*.mp4 "${dot}/shots"/*.webm; do
       n=$((n + 1))
     done
     printf '%s' "${n}"
