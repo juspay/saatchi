@@ -13,6 +13,22 @@ a headless browser, writes one screenshot per named step into
 saatchi knows no app: the app is whatever the `serve` recipe starts, and the
 environment is the whole contract between them.
 
+## Why
+
+Agents proving their PRs kept rebuilding the same machinery — a
+dev-server launcher, readiness probes, screenshot capture — once per
+pull request, every copy dying with its worktree, none of it
+accumulating. Three times in one day in the birth repo, before saatchi
+existed.
+
+saatchi makes evidence two commands: photograph (or film) the real app
+doing the thing, publish it on the PR. The design bet — the tool is
+the instruction — follows Scott Fryxell's
+["The Harness Is the Thing"](https://scott-fryxell.github.io/blog/the-harness-is-the-thing/):
+expose the product to scripts, and evidence is a command, not a
+project. The name is the summary: சாட்சி, a witness — the shots are
+the evidence.
+
 ## Using saatchi in your repo
 
 Two lines into your coding agent:
